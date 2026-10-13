@@ -1,4 +1,4 @@
-"""Invite-only access and durable event storage for the cloud pilot."""
+"""Public demo access and durable event storage for the cloud pilot."""
 import hashlib
 import hmac
 import json
@@ -34,37 +34,21 @@ def resolve_participant(code, registry):
 
 
 def require_participant():
-    registry = setting('participants', {})
-    if not registry:
-        st.info('试用入口尚未配置，请项目负责人在后台添加个人试用码。')
-        st.stop()
-    # Revalidate on every rerun: a removed or rotated credential loses access.
-    identity = resolve_participant(st.session_state.get('_invite', ''), registry)
-    if identity:
-        return identity
-    st.session_state.pop('_invite', None)
-    st.markdown('### 进入我的学习档案')
-    st.caption('输入项目负责人单独发给你的试用码。每人一个，请保存好。')
-    with st.form('participant_login'):
-        code = st.text_input('个人试用码', type='password', key='invite_input')
-        consent = st.checkbox('我同意作文及相关学习记录发送至 DeepSeek 分析，并保存在项目云端数据库；项目负责人可管理记录。')
-        submit = st.form_submit_button('进入学习档案')
-    if submit:
-        wait_until = st.session_state.get('_login_retry_at', 0)
-        if time.monotonic() < wait_until:
-            st.warning('请稍等几秒后再试。')
-        elif not consent:
-            st.warning('请先确认试用数据的处理方式。')
-        else:
-            identity = resolve_participant(code.strip(), registry)
-            if identity:
-                # Clear all previous widgets/reports before switching identity.
-                st.session_state.clear()
-                st.session_state['_invite'] = code.strip()
-                st.rerun()
-            st.session_state['_login_retry_at'] = time.monotonic() + 3
-            st.error('试用码不正确，请核对项目负责人发给你的代码。')
-    st.stop()
+    """Enter the public review mode without an invite code.
+
+    Each Streamlit browser session receives an anonymous profile. This keeps
+    reviewers from seeing one another's records while allowing competition
+    judges to open and use the app immediately.
+    """
+    profile = st.session_state.get('_public_profile')
+    if not profile:
+        session_token = uuid.uuid4().hex
+        profile = hashlib.sha256(
+            ('writeloop-public-session:' + session_token).encode('utf-8')
+        ).hexdigest()
+        st.session_state['_public_profile'] = profile
+    st.info('公开评审模式：无需体验码即可使用。本次提交会发送至 DeepSeek，并保存到本次匿名会话的学习档案；请不要输入姓名、联系方式或其他敏感信息。')
+    return profile, '公开体验者'
 
 
 class CloudStore:
